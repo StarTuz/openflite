@@ -33,6 +33,10 @@ impl SimClient for MSFSClient {
         Err(anyhow!("MSFS write not yet implemented"))
     }
 
+    fn execute_command(&mut self, _command: &str) -> Result<()> {
+        Ok(())
+    }
+
     fn poll(&mut self) -> Result<()> {
         Ok(())
     }

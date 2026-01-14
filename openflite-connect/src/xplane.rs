@@ -85,6 +85,23 @@ impl SimClient for XPlaneClient {
         }
     }
 
+    fn execute_command(&mut self, command: &str) -> Result<()> {
+        if let Some(socket) = &self.socket {
+            let mut buf = [0u8; 505];
+            buf[0..4].copy_from_slice(b"CMND");
+            buf[4] = 0;
+
+            let path_bytes = command.as_bytes();
+            let len = path_bytes.len().min(500);
+            buf[5..5 + len].copy_from_slice(&path_bytes[..len]);
+
+            socket.send_to(&buf[..5 + len + 1], &self.address)?;
+            Ok(())
+        } else {
+            Err(anyhow!("Not connected"))
+        }
+    }
+
     fn poll(&mut self) -> Result<()> {
         if let Some(socket) = &self.socket {
             let mut buf = [0u8; 4096];

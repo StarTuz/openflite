@@ -41,6 +41,7 @@ enum Message {
     SimResult(Result<(), String>),
     ConnectDemo,
     LoadDemoConfig,
+    TriggerDemoButton,
     CoreEvent(Event),
     Tick,
 }
@@ -171,7 +172,16 @@ impl Application for OpenFliteApp {
                                 </Settings>
                             </Config>
                         </Outputs>
-                        <Inputs />
+                        <Inputs>
+                            <Config guid="demo-gear" active="true">
+                                <Description>GearToggle</Description>
+                                <Settings>
+                                    <Button>
+                                        <OnPress type="XplaneAction" cmd="sim/annunciator/gear_unsafe" />
+                                    </Button>
+                                </Settings>
+                            </Config>
+                        </Inputs>
                     </MobiFlightProject>
                 "#;
                 if self.core.load_config(xml).is_ok() {
@@ -180,6 +190,16 @@ impl Application for OpenFliteApp {
                 } else {
                     self.error_msg = Some("Failed to load demo config".to_string());
                 }
+            }
+            Message::TriggerDemoButton => {
+                use openflite_core::protocol::Response;
+                self.core.inject_hardware_response(
+                    "DEMO-BOARD",
+                    Response::InputEvent {
+                        name: "GearToggle".to_string(),
+                        value: "1".to_string(),
+                    },
+                );
             }
             Message::Tick => {
                 self.data_cache = self.core.get_all_variables();
@@ -261,6 +281,20 @@ impl Application for OpenFliteApp {
                         iced::theme::Button::Primary
                     }),
                 ],
+                if self.config_loaded {
+                    Element::from(
+                        column![
+                            vertical_space().height(10),
+                            button(text("TRIGGER GEAR BUTTON").size(14))
+                                .on_press(Message::TriggerDemoButton)
+                                .padding(10)
+                                .style(iced::theme::Button::Destructive)
+                        ]
+                        .spacing(10),
+                    )
+                } else {
+                    vertical_space().height(0).into()
+                },
                 vertical_space().height(20),
                 scrollable(
                     column(

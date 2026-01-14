@@ -13,6 +13,9 @@ pub trait SimClient {
     /// Write to a variable
     fn write_variable(&mut self, variable: &str, value: f64) -> Result<()>;
 
+    /// Execute a command (e.g. toggle gear)
+    fn execute_command(&mut self, command: &str) -> Result<()>;
+
     /// Poll for new data (non-blocking)
     fn poll(&mut self) -> Result<()>;
 

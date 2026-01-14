@@ -42,6 +42,10 @@ pub enum Response {
         version: String,
     },
     Data(Vec<String>),
+    InputEvent {
+        name: String,
+        value: String,
+    },
     Unknown(u8, Vec<String>),
 }
 
@@ -62,6 +66,10 @@ impl Response {
                 board_type: args[1].clone(),
                 serial: args[2].clone(),
                 version: args[3].clone(),
+            }),
+            11 if args.len() >= 2 => Some(Response::InputEvent {
+                name: args[0].clone(),
+                value: args[1].clone(),
             }),
             _ => Some(Response::Unknown(id, args)),
         }

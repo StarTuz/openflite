@@ -12,24 +12,69 @@ pub struct MobiFlightProject {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Outputs {
     #[serde(rename = "Config", default)]
-    pub config: Vec<Config>,
+    pub config: Vec<OutputConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Inputs {
     #[serde(rename = "Config", default)]
-    pub config: Vec<Config>,
+    pub config: Vec<InputConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct Config {
+pub struct OutputConfig {
     #[serde(rename = "@guid")]
     pub guid: String,
     #[serde(rename = "@active")]
     pub active: bool,
     pub description: String,
     pub settings: ConfigSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct InputConfig {
+    #[serde(rename = "@guid")]
+    pub guid: String,
+    #[serde(rename = "@active")]
+    pub active: bool,
+    pub description: String,
+    pub settings: InputSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct InputSettings {
+    pub button: Option<ButtonAction>,
+    pub encoder: Option<EncoderAction>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ButtonAction {
+    pub on_press: Option<Action>,
+    pub on_release: Option<Action>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct EncoderAction {
+    pub on_left: Option<Action>,
+    pub on_right: Option<Action>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Action {
+    #[serde(rename = "@type")]
+    pub action_type: String, // e.g., "XplaneAction"
+    #[serde(rename = "@cmd")]
+    pub command: Option<String>,
+    #[serde(rename = "@dataref")]
+    pub dataref: Option<String>,
+    #[serde(rename = "@value")]
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -70,4 +70,24 @@ impl MobiFlightDevice {
         let ports = serialport::available_ports()?;
         Ok(ports.into_iter().map(|p| p.port_name).collect())
     }
+
+    pub fn poll_events(&mut self) -> Vec<Response> {
+        let mut responses = Vec::new();
+        if let Ok(count) = self.port.bytes_to_read() {
+            if count > 0 {
+                let mut reader = BufReader::new(&mut self.port);
+                let mut line = String::new();
+                // Read everything available until we hit a delimiter (;)
+                // Simplification for now: read one line if available
+                if let Ok(n) = reader.read_line(&mut line) {
+                    if n > 0 {
+                        if let Some(resp) = Response::parse(&line) {
+                            responses.push(resp);
+                        }
+                    }
+                }
+            }
+        }
+        responses
+    }
 }

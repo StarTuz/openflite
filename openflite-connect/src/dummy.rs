@@ -36,6 +36,11 @@ impl SimClient for DummyClient {
         Ok(())
     }
 
+    fn execute_command(&mut self, command: &str) -> Result<()> {
+        log::info!("DummyClient executing command: {}", command);
+        Ok(())
+    }
+
     fn poll(&mut self) -> Result<()> {
         if self.connected {
             self.counter += 0.1;

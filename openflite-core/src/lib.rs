@@ -14,6 +14,7 @@ pub enum Event {
 
 use crate::device::MobiFlightDevice;
 use crate::mapping::MappingEngine;
+use crate::protocol::Response;
 use openflite_connect::SimClient;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -23,6 +24,7 @@ pub struct Core {
     devices: Arc<Mutex<Vec<MobiFlightDevice>>>,
     sim_client: Arc<Mutex<Option<Box<dyn SimClient + Send>>>>,
     mapping_engine: Arc<Mutex<Option<MappingEngine>>>,
+    injected_responses: Arc<Mutex<Vec<(String, Response)>>>,
 }
 
 impl Core {
@@ -34,6 +36,7 @@ impl Core {
                 devices: Arc::new(Mutex::new(Vec::new())),
                 sim_client: Arc::new(Mutex::new(None)),
                 mapping_engine: Arc::new(Mutex::new(None)),
+                injected_responses: Arc::new(Mutex::new(Vec::new())),
             },
             rx,
         )
@@ -83,8 +86,26 @@ impl Core {
 
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         loop {
+            // Poll devices for input events
+            let mut hardware_responses = Vec::new();
+            {
+                // Process injected responses first
+                {
+                    let mut injected = self.injected_responses.lock().unwrap();
+                    hardware_responses.append(&mut *injected);
+                }
+
+                let mut devices = self.devices.lock().unwrap();
+                for dev in devices.iter_mut() {
+                    let resps = dev.poll_events();
+                    for resp in resps {
+                        hardware_responses.push((dev.name.clone(), resp));
+                    }
+                }
+            }
+
             // Poll simulator and process mappings
-            let mut actions = Vec::new();
+            let mut hardware_actions = Vec::new();
             {
                 let mut sim = self.sim_client.lock().unwrap();
                 if let Some(client) = sim.as_mut() {
@@ -92,20 +113,46 @@ impl Core {
 
                     let mapping = self.mapping_engine.lock().unwrap();
                     if let Some(engine) = mapping.as_ref() {
+                        // 1. Process Output Mappings (Sim -> Hardware)
                         let data = client.get_all_variables();
-                        actions = engine.process_outputs(&data);
+                        hardware_actions = engine.process_outputs(&data);
+
+                        // 2. Process Input Mappings (Hardware -> Sim)
+                        for (dev_name, resp) in hardware_responses {
+                            // Forward event to UI for logging
+                            if let Response::InputEvent {
+                                name: pin_name,
+                                value,
+                            } = &resp
+                            {
+                                self.broadcast(Event::VariableChanged {
+                                    name: format!("{}:{}", dev_name, pin_name),
+                                    value: value.parse().unwrap_or(0.0),
+                                });
+                            }
+
+                            let sim_actions = engine.process_inputs(&resp);
+                            for action in sim_actions {
+                                match action {
+                                    crate::mapping::SimAction::Command(cmd) => {
+                                        let _ = client.execute_command(&cmd);
+                                    }
+                                    crate::mapping::SimAction::WriteDataref(dref, val) => {
+                                        let _ = client.write_variable(&dref, val);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             // Apply actions to devices
-            if !actions.is_empty() {
+            if !hardware_actions.is_empty() {
                 let mut devices = self.devices.lock().unwrap();
-                for action in actions {
-                    // Find device by serial (MobiFlight uses serials in MCC)
+                for action in hardware_actions {
                     if let Some(dev) = devices.iter_mut().find(|d| d.serial == action.serial) {
-                        // In a real device, we'd send the CMD_SET_PIN equivalent
-                        // For now we just log it or track state if needed
                         let _ = dev.set_pin(action.pin, action.value);
                     }
                 }
@@ -134,5 +181,10 @@ impl Core {
         } else {
             std::collections::HashMap::new()
         }
+    }
+
+    pub fn inject_hardware_response(&self, dev_name: &str, resp: Response) {
+        let mut injected = self.injected_responses.lock().unwrap();
+        injected.push((dev_name.to_string(), resp));
     }
 }
