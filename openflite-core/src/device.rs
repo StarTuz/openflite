@@ -62,8 +62,16 @@ impl MobiFlightDevice {
         Ok(())
     }
 
-    pub fn set_pin(&mut self, pin: u8, value: i32) -> Result<()> {
-        self.send_command(Command::SetPin(pin, value as u8))
+    pub fn set_pin(&mut self, pin: u8, value: u8) -> Result<()> {
+        self.send_command(Command::SetPin(pin, value))
+    }
+
+    pub fn set_7segment(&mut self, module: u8, index: u8, value: &str) -> Result<()> {
+        self.send_command(Command::Set7Segment(module, index, value.to_string()))
+    }
+
+    pub fn set_lcd(&mut self, display_id: u8, line: u8, text: &str) -> Result<()> {
+        self.send_command(Command::SetLCD(display_id, line, text.to_string()))
     }
 
     pub fn scan() -> Result<Vec<String>> {

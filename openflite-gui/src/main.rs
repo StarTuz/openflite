@@ -44,6 +44,8 @@ enum Message {
     ConnectDemo,
     LoadDemoConfig,
     TriggerDemoButton,
+    TriggerEncoderLeft,
+    TriggerEncoderRight,
     CoreEvent(Event),
     Tick,
 }
@@ -183,6 +185,15 @@ impl Application for OpenFliteApp {
                                     </Button>
                                 </Settings>
                             </Config>
+                            <Config guid="demo-heading" active="true">
+                                <Description>HeadingDial</Description>
+                                <Settings>
+                                    <Encoder>
+                                        <OnLeft type="XplaneAction" cmd="sim/autopilot/heading_down" />
+                                        <OnRight type="XplaneAction" cmd="sim/autopilot/heading_up" />
+                                    </Encoder>
+                                </Settings>
+                            </Config>
                         </Inputs>
                     </MobiFlightProject>
                 "#;
@@ -199,6 +210,26 @@ impl Application for OpenFliteApp {
                     "DEMO-BOARD",
                     Response::InputEvent {
                         name: "GearToggle".to_string(),
+                        value: "1".to_string(),
+                    },
+                );
+            }
+            Message::TriggerEncoderLeft => {
+                use openflite_core::protocol::Response;
+                self.core.inject_hardware_response(
+                    "DEMO-BOARD",
+                    Response::InputEvent {
+                        name: "HeadingDial".to_string(),
+                        value: "0".to_string(),
+                    },
+                );
+            }
+            Message::TriggerEncoderRight => {
+                use openflite_core::protocol::Response;
+                self.core.inject_hardware_response(
+                    "DEMO-BOARD",
+                    Response::InputEvent {
+                        name: "HeadingDial".to_string(),
                         value: "1".to_string(),
                     },
                 );
@@ -336,7 +367,18 @@ impl OpenFliteApp {
                             button(text("TRIGGER GEAR BUTTON").size(14))
                                 .on_press(Message::TriggerDemoButton)
                                 .padding(10)
-                                .style(iced::theme::Button::Destructive)
+                                .style(iced::theme::Button::Destructive),
+                            row![
+                                button(text("ENCODER L").size(12))
+                                    .on_press(Message::TriggerEncoderLeft)
+                                    .padding(8)
+                                    .style(iced::theme::Button::Secondary),
+                                horizontal_space().width(5),
+                                button(text("ENCODER R").size(12))
+                                    .on_press(Message::TriggerEncoderRight)
+                                    .padding(8)
+                                    .style(iced::theme::Button::Secondary),
+                            ]
                         ]
                         .spacing(10),
                     )

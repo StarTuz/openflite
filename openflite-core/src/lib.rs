@@ -165,8 +165,32 @@ impl Core {
         if !hardware_actions.is_empty() {
             let mut devices = self.devices.lock().unwrap();
             for action in hardware_actions {
-                if let Some(dev) = devices.iter_mut().find(|d| d.serial == action.serial) {
-                    let _ = dev.set_pin(action.pin, action.value);
+                match action {
+                    crate::mapping::HardwareAction::SetPin { serial, pin, value } => {
+                        if let Some(dev) = devices.iter_mut().find(|d| d.serial == serial) {
+                            let _ = dev.set_pin(pin, value);
+                        }
+                    }
+                    crate::mapping::HardwareAction::Set7Segment {
+                        serial,
+                        module,
+                        index,
+                        value,
+                    } => {
+                        if let Some(dev) = devices.iter_mut().find(|d| d.serial == serial) {
+                            let _ = dev.set_7segment(module, index, &value);
+                        }
+                    }
+                    crate::mapping::HardwareAction::SetLCD {
+                        serial,
+                        display_id,
+                        line,
+                        text,
+                    } => {
+                        if let Some(dev) = devices.iter_mut().find(|d| d.serial == serial) {
+                            let _ = dev.set_lcd(display_id, line, &text);
+                        }
+                    }
                 }
             }
         }

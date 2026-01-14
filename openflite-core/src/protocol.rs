@@ -6,8 +6,9 @@ pub enum Command {
     SetName(String),
     GetVersion,
     ResetBoard,
-    SetPin(u8, u8), // pin, value
-                    // Input events are received from the board
+    SetPin(u8, u8),              // pin, value
+    Set7Segment(u8, u8, String), // module, index, value
+    SetLCD(u8, u8, String),      // display_id, line, text
 }
 
 impl Command {
@@ -19,7 +20,9 @@ impl Command {
             Command::GetName => 8,
             Command::SetName(_) => 9,
             Command::GetVersion => 10,
-            Command::SetPin(_, _) => 3, // Usually 3 is generic data send
+            Command::SetPin(_, _) => 3,
+            Command::Set7Segment(_, _, _) => 15,
+            Command::SetLCD(_, _, _) => 16,
         }
     }
 
@@ -28,6 +31,12 @@ impl Command {
         match self {
             Command::SetName(name) => format!("{},{};", id, name),
             Command::SetPin(pin, val) => format!("{},{},{};", id, pin, val),
+            Command::Set7Segment(module, index, val) => {
+                format!("{},{},{},{};", id, module, index, val)
+            }
+            Command::SetLCD(display_id, line, text) => {
+                format!("{},{},{},{};", id, display_id, line, text)
+            }
             _ => format!("{};", id),
         }
     }
