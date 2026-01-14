@@ -1,0 +1,17 @@
+{
+  "name": "openflite-msfs-bridge",
+  "version": "0.1.0",
+  "description": "HTTP bridge for OpenFlite MSFS integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "msfs-sdk": "^1.0.0"
+  }
+}
