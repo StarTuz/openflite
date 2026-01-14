@@ -9,6 +9,8 @@ pub enum Command {
     SetPin(u8, u8),              // pin, value
     Set7Segment(u8, u8, String), // module, index, value
     SetLCD(u8, u8, String),      // display_id, line, text
+    SetStepper(u8, i32),         // motor_id, steps (negative = reverse)
+    SetRGB(u8, u8, u8, u8),      // led_id, r, g, b
 }
 
 impl Command {
@@ -23,6 +25,8 @@ impl Command {
             Command::SetPin(_, _) => 3,
             Command::Set7Segment(_, _, _) => 15,
             Command::SetLCD(_, _, _) => 16,
+            Command::SetStepper(_, _) => 17,
+            Command::SetRGB(_, _, _, _) => 18,
         }
     }
 
@@ -36,6 +40,12 @@ impl Command {
             }
             Command::SetLCD(display_id, line, text) => {
                 format!("{},{},{},{};", id, display_id, line, text)
+            }
+            Command::SetStepper(motor_id, steps) => {
+                format!("{},{},{};", id, motor_id, steps)
+            }
+            Command::SetRGB(led_id, r, g, b) => {
+                format!("{},{},{},{},{};", id, led_id, r, g, b)
             }
             _ => format!("{};", id),
         }

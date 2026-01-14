@@ -154,6 +154,18 @@ pub enum HardwareAction {
         line: u8,
         text: String,
     },
+    SetStepper {
+        serial: String,
+        motor_id: u8,
+        steps: i32,
+    },
+    SetRGB {
+        serial: String,
+        led_id: u8,
+        r: u8,
+        g: u8,
+        b: u8,
+    },
 }
 
 pub enum SimAction {

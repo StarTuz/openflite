@@ -192,6 +192,26 @@ impl Core {
                             let _ = dev.set_lcd(display_id, line, &text);
                         }
                     }
+                    crate::mapping::HardwareAction::SetStepper {
+                        serial,
+                        motor_id,
+                        steps,
+                    } => {
+                        if let Some(dev) = devices.iter_mut().find(|d| d.serial == serial) {
+                            let _ = dev.set_stepper(motor_id, steps);
+                        }
+                    }
+                    crate::mapping::HardwareAction::SetRGB {
+                        serial,
+                        led_id,
+                        r,
+                        g,
+                        b,
+                    } => {
+                        if let Some(dev) = devices.iter_mut().find(|d| d.serial == serial) {
+                            let _ = dev.set_rgb(led_id, r, g, b);
+                        }
+                    }
                 }
             }
         }

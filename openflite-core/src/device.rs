@@ -74,6 +74,14 @@ impl MobiFlightDevice {
         self.send_command(Command::SetLCD(display_id, line, text.to_string()))
     }
 
+    pub fn set_stepper(&mut self, motor_id: u8, steps: i32) -> Result<()> {
+        self.send_command(Command::SetStepper(motor_id, steps))
+    }
+
+    pub fn set_rgb(&mut self, led_id: u8, r: u8, g: u8, b: u8) -> Result<()> {
+        self.send_command(Command::SetRGB(led_id, r, g, b))
+    }
+
     pub fn scan() -> Result<Vec<String>> {
         let ports = serialport::available_ports()?;
         Ok(ports.into_iter().map(|p| p.port_name).collect())
