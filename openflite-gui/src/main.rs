@@ -50,6 +50,12 @@ struct EditorState {
     target_device: Option<String>,
     target_pin: String,
     display_type: Option<String>,
+    // Input editor fields
+    input_name: String,
+    input_type: Option<String>,
+    on_press_cmd: String,
+    on_left_cmd: String,
+    on_right_cmd: String,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +105,13 @@ enum Message {
     EditorDisplayTypeSelected(String),
     AddOutputMapping,
     ApplyMappings,
+    // Input Mapping Messages
+    EditorInputNameChanged(String),
+    EditorInputTypeSelected(String),
+    EditorOnPressCmdChanged(String),
+    EditorOnLeftCmdChanged(String),
+    EditorOnRightCmdChanged(String),
+    AddInputMapping,
 }
 
 impl Application for OpenFliteApp {
@@ -346,6 +359,43 @@ impl Application for OpenFliteApp {
                     self.error_msg = None;
                 } else {
                     self.error_msg = Some("Failed to apply config".to_string());
+                }
+            }
+            // Input Mapping Handlers
+            Message::EditorInputNameChanged(val) => {
+                self.editor.input_name = val;
+            }
+            Message::EditorInputTypeSelected(val) => {
+                self.editor.input_type = Some(val);
+            }
+            Message::EditorOnPressCmdChanged(val) => {
+                self.editor.on_press_cmd = val;
+            }
+            Message::EditorOnLeftCmdChanged(val) => {
+                self.editor.on_left_cmd = val;
+            }
+            Message::EditorOnRightCmdChanged(val) => {
+                self.editor.on_right_cmd = val;
+            }
+            Message::AddInputMapping => {
+                if !self.editor.input_name.is_empty() {
+                    self.input_mappings.push(InputMappingDraft {
+                        name: self.editor.input_name.clone(),
+                        input_type: self
+                            .editor
+                            .input_type
+                            .clone()
+                            .unwrap_or("Button".to_string()),
+                        on_press_cmd: self.editor.on_press_cmd.clone(),
+                        on_left_cmd: self.editor.on_left_cmd.clone(),
+                        on_right_cmd: self.editor.on_right_cmd.clone(),
+                    });
+                    // Reset input fields
+                    self.editor.input_name = String::new();
+                    self.editor.input_type = None;
+                    self.editor.on_press_cmd = String::new();
+                    self.editor.on_left_cmd = String::new();
+                    self.editor.on_right_cmd = String::new();
                 }
             }
         }
@@ -684,10 +734,41 @@ impl OpenFliteApp {
         format!(
             r#"<MobiFlightProject>
                 <Outputs>{}</Outputs>
-                <Inputs></Inputs>
+                <Inputs>{}</Inputs>
             </MobiFlightProject>"#,
-            outputs_xml
+            outputs_xml,
+            self.generate_inputs_xml()
         )
+    }
+
+    fn generate_inputs_xml(&self) -> String {
+        let mut inputs_xml = String::new();
+        for (i, m) in self.input_mappings.iter().enumerate() {
+            let action_xml = if m.input_type == "Encoder" {
+                format!(
+                    r#"<Encoder>
+                        <OnLeft type="XplaneAction" cmd="{}" />
+                        <OnRight type="XplaneAction" cmd="{}" />
+                    </Encoder>"#,
+                    m.on_left_cmd, m.on_right_cmd
+                )
+            } else {
+                format!(
+                    r#"<Button>
+                        <OnPress type="XplaneAction" cmd="{}" />
+                    </Button>"#,
+                    m.on_press_cmd
+                )
+            };
+            inputs_xml.push_str(&format!(
+                r#"<Config guid="input-{}" active="true">
+                    <Description>{}</Description>
+                    <Settings>{}</Settings>
+                </Config>"#,
+                i, m.name, action_xml
+            ));
+        }
+        inputs_xml
     }
 
     fn view_editor_panel(&self) -> Element<'_, Message> {
@@ -792,10 +873,76 @@ impl OpenFliteApp {
                         .padding(8)
                         .style(iced::theme::Button::Positive),
                 ],
+                vertical_space().height(20),
+                // Input Mapping Section
+                text("Input Mapping")
+                    .size(14)
+                    .style(Color::from_rgb(0.5, 0.5, 0.5)),
+                vertical_space().height(10),
+                row![
+                    text("Name:").size(12),
+                    horizontal_space().width(5),
+                    text_input("GearToggle", &self.editor.input_name)
+                        .on_input(Message::EditorInputNameChanged)
+                        .padding(5)
+                        .width(120),
+                    horizontal_space().width(10),
+                    text("Type:").size(12),
+                    horizontal_space().width(5),
+                    pick_list(
+                        vec!["Button".to_string(), "Encoder".to_string()],
+                        self.editor.input_type.clone(),
+                        Message::EditorInputTypeSelected
+                    )
+                    .placeholder("Button"),
+                ]
+                .align_items(Alignment::Center),
+                vertical_space().height(10),
+                if self.editor.input_type.as_deref() == Some("Encoder") {
+                    Element::from(
+                        row![
+                            text("Left:").size(12),
+                            horizontal_space().width(5),
+                            text_input("sim/autopilot/heading_down", &self.editor.on_left_cmd)
+                                .on_input(Message::EditorOnLeftCmdChanged)
+                                .padding(5)
+                                .width(200),
+                            horizontal_space().width(10),
+                            text("Right:").size(12),
+                            horizontal_space().width(5),
+                            text_input("sim/autopilot/heading_up", &self.editor.on_right_cmd)
+                                .on_input(Message::EditorOnRightCmdChanged)
+                                .padding(5)
+                                .width(200),
+                        ]
+                        .align_items(Alignment::Center),
+                    )
+                } else {
+                    Element::from(
+                        row![
+                            text("OnPress:").size(12),
+                            horizontal_space().width(5),
+                            text_input("sim/gear/toggle", &self.editor.on_press_cmd)
+                                .on_input(Message::EditorOnPressCmdChanged)
+                                .padding(5)
+                                .width(Length::Fill),
+                        ]
+                        .align_items(Alignment::Center),
+                    )
+                },
+                vertical_space().height(10),
+                button(text("ADD INPUT").size(12))
+                    .on_press(Message::AddInputMapping)
+                    .padding(8)
+                    .style(iced::theme::Button::Primary),
                 vertical_space().height(15),
-                text(format!("Mappings: {}", self.output_mappings.len()))
-                    .size(12)
-                    .style(Color::from_rgb(0.4, 0.4, 0.4)),
+                text(format!(
+                    "Outputs: {} | Inputs: {}",
+                    self.output_mappings.len(),
+                    self.input_mappings.len()
+                ))
+                .size(12)
+                .style(Color::from_rgb(0.4, 0.4, 0.4)),
             ]
             .padding(20),
         )
