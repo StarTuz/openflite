@@ -42,8 +42,15 @@ impl Core {
         client.connect()?;
         let mut sim = self.sim_client.lock().unwrap();
         *sim = Some(client);
-        self.broadcast(Event::SimConnected("Connected".to_string()));
         Ok(())
+    }
+
+    pub fn disconnect_sim(&self) {
+        let mut sim = self.sim_client.lock().unwrap();
+        if let Some(mut client) = sim.take() {
+            let _ = client.disconnect();
+        }
+        self.broadcast(Event::SimDisconnected);
     }
 
     pub fn scan_devices(&self) -> Result<(), anyhow::Error> {

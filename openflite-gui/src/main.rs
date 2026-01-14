@@ -36,6 +36,7 @@ enum Message {
     ScanDevices,
     ScanResult(Result<(), String>),
     ConnectSim,
+    DisconnectSim,
     SimResult(Result<(), String>),
     ConnectDemo,
     CoreEvent(Event),
@@ -108,6 +109,10 @@ impl Application for OpenFliteApp {
                 Event::SimConnected(status) => {
                     self.sim_status = status;
                 }
+                Event::SimDisconnected => {
+                    self.sim_status = "Disconnected".to_string();
+                    self.data_cache.clear();
+                }
                 _ => {}
             },
             Message::ConnectSim => {
@@ -118,10 +123,17 @@ impl Application for OpenFliteApp {
                         let client = Box::new(openflite_connect::xplane::XPlaneClient::new(
                             "127.0.0.1:49000",
                         ));
-                        core.set_sim_client(client).map_err(|e| e.to_string())
+                        let res = core.set_sim_client(client).map_err(|e| e.to_string());
+                        if res.is_ok() {
+                            core.broadcast(Event::SimConnected("Connected".to_string()));
+                        }
+                        res
                     },
                     Message::SimResult,
                 );
+            }
+            Message::DisconnectSim => {
+                self.core.disconnect_sim();
             }
             Message::SimResult(result) => {
                 if let Err(e) = result {
@@ -134,7 +146,11 @@ impl Application for OpenFliteApp {
                 return Command::perform(
                     async move {
                         let client = Box::new(openflite_connect::dummy::DummyClient::new());
-                        core.set_sim_client(client).map_err(|e| e.to_string())
+                        let res = core.set_sim_client(client).map_err(|e| e.to_string());
+                        if res.is_ok() {
+                            core.broadcast(Event::SimConnected("Demo Mode".to_string()));
+                        }
+                        res
                     },
                     Message::SimResult,
                 );
@@ -171,6 +187,8 @@ impl Application for OpenFliteApp {
 
     fn view(&self) -> Element<'_, Message> {
         let is_sim_connected = self.sim_status == "Connected";
+        let is_demo_mode = self.sim_status == "Demo Mode";
+        let is_any_connected = is_sim_connected || is_demo_mode;
 
         // Header
         let header = container(
@@ -262,19 +280,37 @@ impl Application for OpenFliteApp {
                     }),
                 ],
                 vertical_space().height(20),
-                button(text("CONNECT TO X-PLANE").size(14))
-                    .on_press(Message::ConnectSim)
-                    .padding(10)
-                    .style(if is_sim_connected {
-                        iced::theme::Button::Secondary
-                    } else {
-                        iced::theme::Button::Primary
-                    }),
+                if is_sim_connected {
+                    button(text("DISCONNECT FROM X-PLANE").size(14))
+                        .on_press(Message::DisconnectSim)
+                        .padding(10)
+                        .style(iced::theme::Button::Secondary)
+                } else if !is_any_connected {
+                    button(text("CONNECT TO X-PLANE").size(14))
+                        .on_press(Message::ConnectSim)
+                        .padding(10)
+                        .style(iced::theme::Button::Primary)
+                } else {
+                    button(text("SIM DISCONNECTED").size(14))
+                        .padding(10)
+                        .style(iced::theme::Button::Secondary)
+                },
                 vertical_space().height(10),
-                button(text("START DEMO MODE").size(14))
-                    .on_press(Message::ConnectDemo)
-                    .padding(10)
-                    .style(iced::theme::Button::Secondary),
+                if is_demo_mode {
+                    button(text("STOP DEMO MODE").size(14))
+                        .on_press(Message::DisconnectSim)
+                        .padding(10)
+                        .style(iced::theme::Button::Secondary)
+                } else if !is_any_connected {
+                    button(text("START DEMO MODE").size(14))
+                        .on_press(Message::ConnectDemo)
+                        .padding(10)
+                        .style(iced::theme::Button::Secondary)
+                } else {
+                    button(text("DEMO INACTIVE").size(14))
+                        .padding(10)
+                        .style(iced::theme::Button::Secondary)
+                },
                 vertical_space().height(30),
                 text("NETWORK SPECS")
                     .size(14)
