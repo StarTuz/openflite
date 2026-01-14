@@ -1,0 +1,15 @@
+[package]
+name = "openflite-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serialport = "4.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+quick-xml = { version = "0.31", features = ["serialize"] }
+anyhow = "1.0"
+thiserror = "1.0"
+log = "0.4"
+tokio = { version = "1.0", features = ["sync", "rt", "time"] }
+openflite-connect = { path = "../openflite-connect" }

@@ -1,0 +1,14 @@
+[package]
+name = "openflite-gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.12", features = ["canvas", "tokio", "debug"] }
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.10"
+openflite-core = { path = "../openflite-core" }
+openflite-connect = { path = "../openflite-connect" }
+futures = "0.3"
