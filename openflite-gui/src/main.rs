@@ -580,29 +580,44 @@ impl OpenFliteApp {
     fn view_header(&self) -> Element<'_, Message> {
         container(
             row![
-                text("OPENFLITE")
-                    .size(30)
-                    .style(Color::from_rgb(0.0, 0.8, 1.0)),
+                text("OPENFLITE").size(28).style(styles::ACCENT_CYAN),
                 horizontal_space().width(Length::Fill),
                 button(
                     text(if self.show_editor {
-                        "CLOSE EDITOR"
+                        "✕ CLOSE"
                     } else {
-                        "CONFIG EDITOR"
+                        "⚙ CONFIG"
                     })
                     .size(12)
                 )
                 .on_press(Message::ToggleEditor)
-                .padding(8)
+                .padding([8, 16])
                 .style(if self.show_editor {
                     iced::theme::Button::Secondary
                 } else {
                     iced::theme::Button::Primary
                 }),
                 horizontal_space().width(15),
-                text("SYSTEM STATUS: OK")
-                    .size(14)
-                    .style(Color::from_rgb(0.0, 1.0, 0.0)),
+                container(
+                    row![
+                        container(horizontal_space().width(8))
+                            .width(8)
+                            .height(8)
+                            .style(|_t: &Theme| container::Appearance {
+                                background: Some(iced::Background::Color(styles::STATUS_CONNECTED)),
+                                border: iced::Border {
+                                    radius: 4.0.into(),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }),
+                        horizontal_space().width(8),
+                        text("ONLINE").size(12).style(styles::TEXT_SECONDARY),
+                    ]
+                    .align_items(Alignment::Center)
+                )
+                .padding([6, 12])
+                .style(styles::status_badge_connected),
             ]
             .align_items(Alignment::Center)
             .padding(20),
@@ -613,11 +628,18 @@ impl OpenFliteApp {
 
     fn view_footer(&self) -> Element<'_, Message> {
         if let Some(err) = &self.error_msg {
-            container(text(err).size(14).style(Color::from_rgb(1.0, 0.3, 0.3)))
-                .padding(10)
-                .width(Length::Fill)
-                .style(styles::footer_style)
-                .into()
+            container(
+                row![
+                    text("⚠").size(14).style(styles::ACCENT_RED),
+                    horizontal_space().width(8),
+                    text(err).size(13).style(styles::ACCENT_RED),
+                ]
+                .align_items(Alignment::Center),
+            )
+            .padding([12, 20])
+            .width(Length::Fill)
+            .style(styles::footer_style)
+            .into()
         } else {
             vertical_space().height(0).into()
         }
@@ -841,31 +863,54 @@ impl OpenFliteApp {
     fn view_data_card(&self) -> Element<'_, Message> {
         container(
             column![
-                text("LIVE DATA MONITOR")
-                    .size(18)
-                    .style(Color::from_rgb(0.7, 0.7, 0.7)),
-                vertical_space().height(20),
-                scrollable(
-                    column({
-                        let mut data: Vec<_> = self.data_cache.iter().collect();
-                        data.sort_by(|a, b| a.0.cmp(b.0));
-                        data.into_iter()
-                            .map(|(name, value)| {
-                                row![
-                                    text(name).size(14).style(Color::from_rgb(0.5, 0.5, 0.5)),
-                                    horizontal_space().width(Length::Fill),
-                                    text(format!("{:.4}", value))
-                                        .size(14)
-                                        .style(Color::from_rgb(0.0, 1.0, 0.8)),
-                                ]
-                                .padding(2)
-                                .into()
+                row![
+                    text("📊").size(16),
+                    horizontal_space().width(8),
+                    text("LIVE DATA MONITOR")
+                        .size(16)
+                        .style(styles::TEXT_PRIMARY),
+                ]
+                .align_items(Alignment::Center),
+                vertical_space().height(15),
+                if self.data_cache.is_empty() {
+                    Element::from(container(
+                        column![
+                            vertical_space().height(30),
+                            text("No data available").size(14).style(styles::TEXT_MUTED),
+                            vertical_space().height(8),
+                            text("Connect to a simulator or start Demo Mode")
+                                .size(12)
+                                .style(styles::TEXT_MUTED),
+                            vertical_space().height(30),
+                        ]
+                        .align_items(Alignment::Center)
+                        .width(Length::Fill),
+                    ))
+                } else {
+                    Element::from(
+                        scrollable(
+                            column({
+                                let mut data: Vec<_> = self.data_cache.iter().collect();
+                                data.sort_by(|a, b| a.0.cmp(b.0));
+                                data.into_iter()
+                                    .map(|(name, value)| {
+                                        row![
+                                            text(name).size(13).style(styles::TEXT_SECONDARY),
+                                            horizontal_space().width(Length::Fill),
+                                            text(format!("{:.4}", value))
+                                                .size(13)
+                                                .style(styles::ACCENT_CYAN),
+                                        ]
+                                        .padding([4, 0])
+                                        .into()
+                                    })
+                                    .collect::<Vec<_>>()
                             })
-                            .collect::<Vec<_>>()
-                    })
-                    .spacing(2)
-                )
-                .height(Length::Fill),
+                            .spacing(2),
+                        )
+                        .height(Length::Fill),
+                    )
+                },
             ]
             .padding(20),
         )
