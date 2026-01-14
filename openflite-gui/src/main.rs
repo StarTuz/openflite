@@ -1,5 +1,6 @@
 use iced::widget::{
-    button, column, container, horizontal_space, row, scrollable, text, vertical_space,
+    button, column, container, horizontal_space, pick_list, row, scrollable, text, text_input,
+    vertical_space,
 };
 use iced::{
     executor, Alignment, Application, Color, Command, Element, Length, Settings, Subscription,
@@ -32,6 +33,44 @@ struct OpenFliteApp {
     sim_status: String,
     data_cache: HashMap<String, f64>,
     config_loaded: bool,
+    // Config Editor State
+    show_editor: bool,
+    editor: EditorState,
+    output_mappings: Vec<OutputMappingDraft>,
+    input_mappings: Vec<InputMappingDraft>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct EditorState {
+    dataref: String,
+    comparison_op: Option<String>,
+    comparison_value: String,
+    if_value: String,
+    else_value: String,
+    target_device: Option<String>,
+    target_pin: String,
+    display_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct OutputMappingDraft {
+    dataref: String,
+    comparison_op: String,
+    comparison_value: String,
+    if_value: String,
+    else_value: String,
+    device: String,
+    pin: String,
+    display_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct InputMappingDraft {
+    name: String,
+    input_type: String, // "Button" or "Encoder"
+    on_press_cmd: String,
+    on_left_cmd: String,
+    on_right_cmd: String,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +87,18 @@ enum Message {
     TriggerEncoderRight,
     CoreEvent(Event),
     Tick,
+    // Config Editor Messages
+    ToggleEditor,
+    EditorDatarefChanged(String),
+    EditorComparisonOpSelected(String),
+    EditorComparisonValueChanged(String),
+    EditorIfValueChanged(String),
+    EditorElseValueChanged(String),
+    EditorDeviceSelected(String),
+    EditorPinChanged(String),
+    EditorDisplayTypeSelected(String),
+    AddOutputMapping,
+    ApplyMappings,
 }
 
 impl Application for OpenFliteApp {
@@ -75,6 +126,10 @@ impl Application for OpenFliteApp {
                 sim_status: "Disconnected".to_string(),
                 data_cache: HashMap::new(),
                 config_loaded: false,
+                show_editor: false,
+                editor: EditorState::default(),
+                output_mappings: Vec::new(),
+                input_mappings: Vec::new(),
             },
             Command::none(),
         )
@@ -237,6 +292,62 @@ impl Application for OpenFliteApp {
             Message::Tick => {
                 self.data_cache = self.core.get_all_variables();
             }
+            // Config Editor Message Handlers
+            Message::ToggleEditor => {
+                self.show_editor = !self.show_editor;
+            }
+            Message::EditorDatarefChanged(val) => {
+                self.editor.dataref = val;
+            }
+            Message::EditorComparisonOpSelected(val) => {
+                self.editor.comparison_op = Some(val);
+            }
+            Message::EditorComparisonValueChanged(val) => {
+                self.editor.comparison_value = val;
+            }
+            Message::EditorIfValueChanged(val) => {
+                self.editor.if_value = val;
+            }
+            Message::EditorElseValueChanged(val) => {
+                self.editor.else_value = val;
+            }
+            Message::EditorDeviceSelected(val) => {
+                self.editor.target_device = Some(val);
+            }
+            Message::EditorPinChanged(val) => {
+                self.editor.target_pin = val;
+            }
+            Message::EditorDisplayTypeSelected(val) => {
+                self.editor.display_type = Some(val);
+            }
+            Message::AddOutputMapping => {
+                if !self.editor.dataref.is_empty() {
+                    self.output_mappings.push(OutputMappingDraft {
+                        dataref: self.editor.dataref.clone(),
+                        comparison_op: self.editor.comparison_op.clone().unwrap_or_default(),
+                        comparison_value: self.editor.comparison_value.clone(),
+                        if_value: self.editor.if_value.clone(),
+                        else_value: self.editor.else_value.clone(),
+                        device: self.editor.target_device.clone().unwrap_or_default(),
+                        pin: self.editor.target_pin.clone(),
+                        display_type: self
+                            .editor
+                            .display_type
+                            .clone()
+                            .unwrap_or("Pin".to_string()),
+                    });
+                    self.editor = EditorState::default();
+                }
+            }
+            Message::ApplyMappings => {
+                let xml = self.generate_config_xml();
+                if self.core.load_config(&xml).is_ok() {
+                    self.config_loaded = true;
+                    self.error_msg = None;
+                } else {
+                    self.error_msg = Some("Failed to apply config".to_string());
+                }
+            }
         }
         Command::none()
     }
@@ -271,6 +382,11 @@ impl Application for OpenFliteApp {
         column![
             self.view_header(),
             self.view_main_content(is_sim_connected, is_demo_mode),
+            if self.show_editor {
+                self.view_editor_panel()
+            } else {
+                vertical_space().height(0).into()
+            },
             self.view_footer()
         ]
         .into()
@@ -285,6 +401,22 @@ impl OpenFliteApp {
                     .size(30)
                     .style(Color::from_rgb(0.0, 0.8, 1.0)),
                 horizontal_space().width(Length::Fill),
+                button(
+                    text(if self.show_editor {
+                        "CLOSE EDITOR"
+                    } else {
+                        "CONFIG EDITOR"
+                    })
+                    .size(12)
+                )
+                .on_press(Message::ToggleEditor)
+                .padding(8)
+                .style(if self.show_editor {
+                    iced::theme::Button::Secondary
+                } else {
+                    iced::theme::Button::Primary
+                }),
+                horizontal_space().width(15),
                 text("SYSTEM STATUS: OK")
                     .size(14)
                     .style(Color::from_rgb(0.0, 1.0, 0.0)),
@@ -528,6 +660,146 @@ impl OpenFliteApp {
         )
         .width(Length::Fill)
         .height(Length::FillPortion(1))
+        .style(styles::card_style)
+        .into()
+    }
+
+    fn generate_config_xml(&self) -> String {
+        let mut outputs_xml = String::new();
+        for (i, m) in self.output_mappings.iter().enumerate() {
+            outputs_xml.push_str(&format!(
+                r#"<Config guid="user-{}" active="true">
+                    <Description>{}</Description>
+                    <Settings>
+                        <Source type="SimConnect" name="{}" />
+                        <Comparison active="true" value="{}" operand="{}" ifValue="{}" elseValue="{}" />
+                        <Display type="{}" serial="{}" trigger="OnChange" pin="{}" />
+                    </Settings>
+                </Config>"#,
+                i, m.dataref, m.dataref, m.comparison_value, m.comparison_op, m.if_value, m.else_value,
+                m.display_type, m.device, m.pin
+            ));
+        }
+
+        format!(
+            r#"<MobiFlightProject>
+                <Outputs>{}</Outputs>
+                <Inputs></Inputs>
+            </MobiFlightProject>"#,
+            outputs_xml
+        )
+    }
+
+    fn view_editor_panel(&self) -> Element<'_, Message> {
+        let comparison_ops: Vec<String> =
+            vec![">".into(), "<".into(), "=".into(), ">=".into(), "<=".into()];
+        let display_types: Vec<String> = vec!["Pin".into(), "7Segment".into(), "LCD".into()];
+
+        container(
+            column![
+                row![
+                    text("CONFIG EDITOR")
+                        .size(18)
+                        .style(Color::from_rgb(0.7, 0.7, 0.7)),
+                    horizontal_space().width(Length::Fill),
+                    button(text("X").size(14))
+                        .on_press(Message::ToggleEditor)
+                        .padding(5)
+                        .style(iced::theme::Button::Secondary),
+                ],
+                vertical_space().height(15),
+                text("Output Mapping")
+                    .size(14)
+                    .style(Color::from_rgb(0.5, 0.5, 0.5)),
+                vertical_space().height(10),
+                row![
+                    text("Dataref:").size(12),
+                    horizontal_space().width(10),
+                    text_input("sim/flightmodel/...", &self.editor.dataref)
+                        .on_input(Message::EditorDatarefChanged)
+                        .padding(5)
+                        .width(Length::Fill),
+                ]
+                .align_items(Alignment::Center),
+                vertical_space().height(10),
+                row![
+                    text("If value").size(12),
+                    horizontal_space().width(5),
+                    pick_list(
+                        comparison_ops.clone(),
+                        self.editor.comparison_op.clone(),
+                        Message::EditorComparisonOpSelected
+                    )
+                    .placeholder("op"),
+                    horizontal_space().width(5),
+                    text_input("threshold", &self.editor.comparison_value)
+                        .on_input(Message::EditorComparisonValueChanged)
+                        .padding(5)
+                        .width(60),
+                    horizontal_space().width(5),
+                    text("then").size(12),
+                    horizontal_space().width(5),
+                    text_input("1", &self.editor.if_value)
+                        .on_input(Message::EditorIfValueChanged)
+                        .padding(5)
+                        .width(40),
+                    horizontal_space().width(5),
+                    text("else").size(12),
+                    horizontal_space().width(5),
+                    text_input("0", &self.editor.else_value)
+                        .on_input(Message::EditorElseValueChanged)
+                        .padding(5)
+                        .width(40),
+                ]
+                .align_items(Alignment::Center),
+                vertical_space().height(10),
+                row![
+                    text("Device:").size(12),
+                    horizontal_space().width(5),
+                    pick_list(
+                        self.devices.clone(),
+                        self.editor.target_device.clone(),
+                        Message::EditorDeviceSelected
+                    )
+                    .placeholder("Select device"),
+                    horizontal_space().width(10),
+                    text("Pin:").size(12),
+                    horizontal_space().width(5),
+                    text_input("13", &self.editor.target_pin)
+                        .on_input(Message::EditorPinChanged)
+                        .padding(5)
+                        .width(50),
+                    horizontal_space().width(10),
+                    text("Type:").size(12),
+                    horizontal_space().width(5),
+                    pick_list(
+                        display_types,
+                        self.editor.display_type.clone(),
+                        Message::EditorDisplayTypeSelected
+                    )
+                    .placeholder("Pin"),
+                ]
+                .align_items(Alignment::Center),
+                vertical_space().height(15),
+                row![
+                    button(text("ADD MAPPING").size(12))
+                        .on_press(Message::AddOutputMapping)
+                        .padding(8)
+                        .style(iced::theme::Button::Primary),
+                    horizontal_space().width(10),
+                    button(text("APPLY ALL").size(12))
+                        .on_press(Message::ApplyMappings)
+                        .padding(8)
+                        .style(iced::theme::Button::Positive),
+                ],
+                vertical_space().height(15),
+                text(format!("Mappings: {}", self.output_mappings.len()))
+                    .size(12)
+                    .style(Color::from_rgb(0.4, 0.4, 0.4)),
+            ]
+            .padding(20),
+        )
+        .width(Length::Fill)
         .style(styles::card_style)
         .into()
     }
