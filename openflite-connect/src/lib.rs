@@ -15,6 +15,9 @@ pub trait SimClient {
 
     /// Poll for new data (non-blocking)
     fn poll(&mut self) -> Result<()>;
+
+    /// Get all currently cached variables
+    fn get_all_variables(&self) -> std::collections::HashMap<String, f64>;
 }
 
 pub mod dummy;

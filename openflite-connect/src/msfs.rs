@@ -36,4 +36,8 @@ impl SimClient for MSFSClient {
     fn poll(&mut self) -> Result<()> {
         Ok(())
     }
+
+    fn get_all_variables(&self) -> std::collections::HashMap<String, f64> {
+        std::collections::HashMap::new()
+    }
 }

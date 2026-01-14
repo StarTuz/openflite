@@ -6,6 +6,7 @@ use iced::{
     Theme,
 };
 use openflite_core::{Core, Event};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -27,6 +28,7 @@ struct OpenFliteApp {
     event_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Event>>>>,
     is_scanning: bool,
     sim_status: String,
+    data_cache: HashMap<String, f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,7 +37,9 @@ enum Message {
     ScanResult(Result<(), String>),
     ConnectSim,
     SimResult(Result<(), String>),
+    ConnectDemo,
     CoreEvent(Event),
+    Tick,
 }
 
 impl Application for OpenFliteApp {
@@ -61,6 +65,7 @@ impl Application for OpenFliteApp {
                 event_rx: Arc::new(Mutex::new(Some(event_rx))),
                 is_scanning: false,
                 sim_status: "Disconnected".to_string(),
+                data_cache: HashMap::new(),
             },
             Command::none(),
         )
@@ -123,6 +128,20 @@ impl Application for OpenFliteApp {
                     self.sim_status = format!("Error: {}", e);
                 }
             }
+            Message::ConnectDemo => {
+                self.sim_status = "Demo Mode".to_string();
+                let core = self.core.clone();
+                return Command::perform(
+                    async move {
+                        let client = Box::new(openflite_connect::dummy::DummyClient::new());
+                        core.set_sim_client(client).map_err(|e| e.to_string())
+                    },
+                    Message::SimResult,
+                );
+            }
+            Message::Tick => {
+                self.data_cache = self.core.get_all_variables();
+            }
         }
         Command::none()
     }
@@ -130,7 +149,7 @@ impl Application for OpenFliteApp {
     fn subscription(&self) -> Subscription<Self::Message> {
         struct CoreSubscription;
         let event_rx = self.event_rx.clone();
-        iced::subscription::channel(
+        let events = iced::subscription::channel(
             std::any::TypeId::of::<CoreSubscription>(),
             100,
             move |mut output| async move {
@@ -143,7 +162,11 @@ impl Application for OpenFliteApp {
                 futures::future::pending::<()>().await;
                 unreachable!()
             },
-        )
+        );
+
+        let tick = iced::time::every(std::time::Duration::from_millis(500)).map(|_| Message::Tick);
+
+        Subscription::batch(vec![events, tick])
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -247,7 +270,12 @@ impl Application for OpenFliteApp {
                     } else {
                         iced::theme::Button::Primary
                     }),
-                vertical_space().height(40),
+                vertical_space().height(10),
+                button(text("START DEMO MODE").size(14))
+                    .on_press(Message::ConnectDemo)
+                    .padding(10)
+                    .style(iced::theme::Button::Secondary),
+                vertical_space().height(30),
                 text("NETWORK SPECS")
                     .size(14)
                     .style(Color::from_rgb(0.4, 0.4, 0.4)),
@@ -264,10 +292,49 @@ impl Application for OpenFliteApp {
         .height(Length::Fill)
         .style(card_style);
 
+        // Live Data Card
+        let data_card = container(
+            column![
+                text("LIVE DATA MONITOR")
+                    .size(18)
+                    .style(Color::from_rgb(0.7, 0.7, 0.7)),
+                vertical_space().height(20),
+                scrollable(
+                    column({
+                        let mut data: Vec<_> = self.data_cache.iter().collect();
+                        data.sort_by(|a, b| a.0.cmp(b.0));
+                        data.into_iter()
+                            .map(|(name, value)| {
+                                row![
+                                    text(name).size(14).style(Color::from_rgb(0.5, 0.5, 0.5)),
+                                    horizontal_space().width(Length::Fill),
+                                    text(format!("{:.4}", value))
+                                        .size(14)
+                                        .style(Color::from_rgb(0.0, 1.0, 0.8)),
+                                ]
+                                .padding(2)
+                                .into()
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .spacing(2)
+                )
+                .height(Length::Fill),
+            ]
+            .padding(20),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(card_style);
+
         let main_content = container(
-            row![hardware_card, horizontal_space().width(20), sim_card]
-                .padding(20)
-                .spacing(20),
+            column![
+                row![hardware_card, horizontal_space().width(20), sim_card]
+                    .height(Length::FillPortion(1)),
+                vertical_space().height(20),
+                data_card.height(Length::FillPortion(1)),
+            ]
+            .padding(20),
         )
         .width(Length::Fill)
         .height(Length::Fill);

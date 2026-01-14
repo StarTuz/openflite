@@ -120,4 +120,9 @@ impl SimClient for XPlaneClient {
         }
         Ok(())
     }
+
+    fn get_all_variables(&self) -> HashMap<String, f64> {
+        let cache = self.cache.lock().unwrap();
+        cache.clone()
+    }
 }

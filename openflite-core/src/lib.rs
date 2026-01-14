@@ -97,4 +97,13 @@ impl Core {
             .map(|d| format!("{} ({})", d.name, d.board_type))
             .collect()
     }
+
+    pub fn get_all_variables(&self) -> std::collections::HashMap<String, f64> {
+        let sim = self.sim_client.lock().unwrap();
+        if let Some(client) = sim.as_ref() {
+            client.get_all_variables()
+        } else {
+            std::collections::HashMap::new()
+        }
+    }
 }
