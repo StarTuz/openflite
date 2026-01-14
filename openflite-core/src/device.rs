@@ -62,6 +62,10 @@ impl MobiFlightDevice {
         Ok(())
     }
 
+    pub fn set_pin(&mut self, pin: u8, value: i32) -> Result<()> {
+        self.send_command(Command::SetPin(pin, value as u8))
+    }
+
     pub fn scan() -> Result<Vec<String>> {
         let ports = serialport::available_ports()?;
         Ok(ports.into_iter().map(|p| p.port_name).collect())

@@ -1,5 +1,6 @@
 pub mod config;
 pub mod device;
+pub mod mapping;
 pub mod protocol;
 
 #[derive(Debug, Clone)]
@@ -12,6 +13,7 @@ pub enum Event {
 }
 
 use crate::device::MobiFlightDevice;
+use crate::mapping::MappingEngine;
 use openflite_connect::SimClient;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -20,6 +22,7 @@ pub struct Core {
     event_tx: mpsc::UnboundedSender<Event>,
     devices: Arc<Mutex<Vec<MobiFlightDevice>>>,
     sim_client: Arc<Mutex<Option<Box<dyn SimClient + Send>>>>,
+    mapping_engine: Arc<Mutex<Option<MappingEngine>>>,
 }
 
 impl Core {
@@ -30,9 +33,17 @@ impl Core {
                 event_tx: tx,
                 devices: Arc::new(Mutex::new(Vec::new())),
                 sim_client: Arc::new(Mutex::new(None)),
+                mapping_engine: Arc::new(Mutex::new(None)),
             },
             rx,
         )
+    }
+
+    pub fn load_config(&self, xml_content: &str) -> Result<(), anyhow::Error> {
+        let project = crate::config::MobiFlightProject::load(xml_content)?;
+        let mut engine = self.mapping_engine.lock().unwrap();
+        *engine = Some(MappingEngine::new(project));
+        Ok(())
     }
 
     pub fn set_sim_client(
@@ -72,20 +83,31 @@ impl Core {
 
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         loop {
-            // Check for input events from devices
-            {
-                let mut devices = self.devices.lock().unwrap();
-                for _dev in devices.iter_mut() {
-                    // In a real implementation, we would poll the serial port here
-                    // for any incoming button/encoder messages.
-                }
-            }
-
-            // Poll simulator
+            // Poll simulator and process mappings
+            let mut actions = Vec::new();
             {
                 let mut sim = self.sim_client.lock().unwrap();
                 if let Some(client) = sim.as_mut() {
                     let _ = client.poll();
+
+                    let mapping = self.mapping_engine.lock().unwrap();
+                    if let Some(engine) = mapping.as_ref() {
+                        let data = client.get_all_variables();
+                        actions = engine.process_outputs(&data);
+                    }
+                }
+            }
+
+            // Apply actions to devices
+            if !actions.is_empty() {
+                let mut devices = self.devices.lock().unwrap();
+                for action in actions {
+                    // Find device by serial (MobiFlight uses serials in MCC)
+                    if let Some(dev) = devices.iter_mut().find(|d| d.serial == action.serial) {
+                        // In a real device, we'd send the CMD_SET_PIN equivalent
+                        // For now we just log it or track state if needed
+                        let _ = dev.set_pin(action.pin, action.value);
+                    }
                 }
             }
 

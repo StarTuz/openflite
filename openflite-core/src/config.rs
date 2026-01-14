@@ -36,6 +36,8 @@ pub struct Config {
 #[serde(rename_all = "PascalCase")]
 pub struct ConfigSettings {
     pub source: Option<Source>,
+    pub comparison: Option<Comparison>,
+    pub display: Option<Display>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -45,6 +47,34 @@ pub struct Source {
     pub source_type: String,
     #[serde(rename = "@name")]
     pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Comparison {
+    #[serde(rename = "@active")]
+    pub active: bool,
+    #[serde(rename = "@value")]
+    pub value: String,
+    #[serde(rename = "@operand")]
+    pub operand: String,
+    #[serde(rename = "@ifValue")]
+    pub if_value: String,
+    #[serde(rename = "@elseValue")]
+    pub else_value: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Display {
+    #[serde(rename = "@type")]
+    pub display_type: String,
+    #[serde(rename = "@serial")]
+    pub serial: String,
+    #[serde(rename = "@trigger")]
+    pub trigger: String,
+    #[serde(rename = "@pin")]
+    pub pin: String,
 }
 
 impl MobiFlightProject {

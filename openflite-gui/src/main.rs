@@ -29,6 +29,7 @@ struct OpenFliteApp {
     is_scanning: bool,
     sim_status: String,
     data_cache: HashMap<String, f64>,
+    config_loaded: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +40,7 @@ enum Message {
     DisconnectSim,
     SimResult(Result<(), String>),
     ConnectDemo,
+    LoadDemoConfig,
     CoreEvent(Event),
     Tick,
 }
@@ -67,6 +69,7 @@ impl Application for OpenFliteApp {
                 is_scanning: false,
                 sim_status: "Disconnected".to_string(),
                 data_cache: HashMap::new(),
+                config_loaded: false,
             },
             Command::none(),
         )
@@ -155,6 +158,29 @@ impl Application for OpenFliteApp {
                     Message::SimResult,
                 );
             }
+            Message::LoadDemoConfig => {
+                let xml = r#"
+                    <MobiFlightProject>
+                        <Outputs>
+                            <Config guid="demo-altitude" active="true">
+                                <Description>Altitude LED</Description>
+                                <Settings>
+                                    <Source type="SimConnect" name="sim/flightmodel/position/altitude" />
+                                    <Comparison active="true" value="1050" operand=">" ifValue="1" elseValue="0" />
+                                    <Display type="Pin" serial="DEMO-BOARD" trigger="OnChange" pin="13" />
+                                </Settings>
+                            </Config>
+                        </Outputs>
+                        <Inputs />
+                    </MobiFlightProject>
+                "#;
+                if self.core.load_config(xml).is_ok() {
+                    self.config_loaded = true;
+                    self.error_msg = None;
+                } else {
+                    self.error_msg = Some("Failed to load demo config".to_string());
+                }
+            }
             Message::Tick => {
                 self.data_cache = self.core.get_all_variables();
             }
@@ -213,16 +239,28 @@ impl Application for OpenFliteApp {
                     .size(18)
                     .style(Color::from_rgb(0.7, 0.7, 0.7)),
                 vertical_space().height(20),
-                if self.is_scanning {
-                    button(text("SCANNING...").size(14))
-                        .padding(10)
-                        .style(iced::theme::Button::Primary)
-                } else {
+                row![
                     button(text("SCAN FOR DEVICES").size(14))
                         .on_press(Message::ScanDevices)
                         .padding(10)
-                        .style(iced::theme::Button::Primary)
-                },
+                        .style(iced::theme::Button::Primary),
+                    horizontal_space().width(10),
+                    button(
+                        text(if self.config_loaded {
+                            "CONFIG LOADED"
+                        } else {
+                            "LOAD DEMO LOGIC"
+                        })
+                        .size(14)
+                    )
+                    .on_press(Message::LoadDemoConfig)
+                    .padding(10)
+                    .style(if self.config_loaded {
+                        iced::theme::Button::Secondary
+                    } else {
+                        iced::theme::Button::Primary
+                    }),
+                ],
                 vertical_space().height(20),
                 scrollable(
                     column(
