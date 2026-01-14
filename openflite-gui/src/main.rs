@@ -1,6 +1,9 @@
-use iced::widget::{button, column, container, row, text, vertical_space};
+use iced::widget::{
+    button, column, container, horizontal_space, row, scrollable, text, vertical_space,
+};
 use iced::{
-    executor, Alignment, Application, Command, Element, Length, Settings, Subscription, Theme,
+    executor, Alignment, Application, Color, Command, Element, Length, Settings, Subscription,
+    Theme,
 };
 use openflite_core::{Core, Event};
 use std::sync::{Arc, Mutex};
@@ -8,7 +11,13 @@ use tokio::sync::mpsc;
 
 pub fn main() -> iced::Result {
     env_logger::init();
-    OpenFliteApp::run(Settings::default())
+    OpenFliteApp::run(Settings {
+        window: iced::window::Settings {
+            size: iced::Size::new(900.0, 600.0),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
 }
 
 struct OpenFliteApp {
@@ -39,7 +48,6 @@ impl Application for OpenFliteApp {
         let (core, event_rx) = Core::new();
         let core = Arc::new(core);
 
-        // Spawn core loop
         let core_clone = core.clone();
         tokio::spawn(async move {
             let _ = core_clone.run().await;
@@ -59,7 +67,11 @@ impl Application for OpenFliteApp {
     }
 
     fn title(&self) -> String {
-        String::from("OpenFlite")
+        String::from("OpenFlite | MobiFlight for Linux")
+    }
+
+    fn theme(&self) -> Self::Theme {
+        Theme::Dark
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -84,18 +96,15 @@ impl Application for OpenFliteApp {
                     }
                 }
             }
-            Message::CoreEvent(event) => {
-                log::info!("Received Core Event: {:?}", event);
-                match event {
-                    Event::DeviceDetected(_) => {
-                        self.devices = self.core.get_devices();
-                    }
-                    Event::SimConnected(status) => {
-                        self.sim_status = status;
-                    }
-                    _ => {}
+            Message::CoreEvent(event) => match event {
+                Event::DeviceDetected(_) => {
+                    self.devices = self.core.get_devices();
                 }
-            }
+                Event::SimConnected(status) => {
+                    self.sim_status = status;
+                }
+                _ => {}
+            },
             Message::ConnectSim => {
                 self.sim_status = "Connecting...".to_string();
                 let core = self.core.clone();
@@ -120,9 +129,7 @@ impl Application for OpenFliteApp {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         struct CoreSubscription;
-
         let event_rx = self.event_rx.clone();
-
         iced::subscription::channel(
             std::any::TypeId::of::<CoreSubscription>(),
             100,
@@ -133,7 +140,6 @@ impl Application for OpenFliteApp {
                         let _ = output.try_send(Message::CoreEvent(event));
                     }
                 }
-
                 futures::future::pending::<()>().await;
                 unreachable!()
             },
@@ -141,57 +147,171 @@ impl Application for OpenFliteApp {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let title = text("OpenFlite").size(50);
-        let subtitle = text("MobiFlight for Linux").size(20);
+        let is_sim_connected = self.sim_status == "Connected";
 
-        let scan_btn = if self.is_scanning {
-            button("Scanning...").padding(10)
-        } else {
-            button("Scan for Devices")
-                .on_press(Message::ScanDevices)
+        // Header
+        let header = container(
+            row![
+                text("OPENFLITE")
+                    .size(30)
+                    .style(Color::from_rgb(0.0, 0.8, 1.0)),
+                horizontal_space().width(Length::Fill),
+                text("SYSTEM STATUS: OK")
+                    .size(14)
+                    .style(Color::from_rgb(0.0, 1.0, 0.0)),
+            ]
+            .align_items(Alignment::Center)
+            .padding(20),
+        )
+        .style(header_style);
+
+        // Hardware Card
+        let hardware_card = container(
+            column![
+                text("HARDWARE DASHBOARD")
+                    .size(18)
+                    .style(Color::from_rgb(0.7, 0.7, 0.7)),
+                vertical_space().height(20),
+                if self.is_scanning {
+                    button(text("SCANNING...").size(14))
+                        .padding(10)
+                        .style(iced::theme::Button::Primary)
+                } else {
+                    button(text("SCAN FOR DEVICES").size(14))
+                        .on_press(Message::ScanDevices)
+                        .padding(10)
+                        .style(iced::theme::Button::Primary)
+                },
+                vertical_space().height(20),
+                scrollable(
+                    column(
+                        self.devices
+                            .iter()
+                            .map(|dev| {
+                                row![
+                                    container(horizontal_space().width(8))
+                                        .width(8)
+                                        .height(8)
+                                        .style(|_t: &Theme| container::Appearance {
+                                            background: Some(iced::Background::Color(
+                                                Color::from_rgb(0.0, 1.0, 0.5)
+                                            )),
+                                            border: iced::Border {
+                                                radius: 4.0.into(),
+                                                ..Default::default()
+                                            },
+                                            ..Default::default()
+                                        }),
+                                    horizontal_space().width(10),
+                                    text(dev).size(16),
+                                ]
+                                .align_items(Alignment::Center)
+                                .padding(5)
+                                .into()
+                            })
+                            .collect::<Vec<_>>()
+                    )
+                    .spacing(5)
+                )
+                .height(Length::Fill),
+            ]
+            .padding(20),
+        )
+        .width(Length::FillPortion(1))
+        .height(Length::Fill)
+        .style(card_style);
+
+        // Simulator Card
+        let sim_card = container(
+            column![
+                text("SIMULATION BRIDGE")
+                    .size(18)
+                    .style(Color::from_rgb(0.7, 0.7, 0.7)),
+                vertical_space().height(20),
+                row![
+                    text("STATUS: ").size(16),
+                    text(&self.sim_status).size(16).style(if is_sim_connected {
+                        Color::from_rgb(0.0, 1.0, 0.0)
+                    } else if self.sim_status == "Connecting..." {
+                        Color::from_rgb(1.0, 0.8, 0.0)
+                    } else {
+                        Color::from_rgb(1.0, 0.3, 0.3)
+                    }),
+                ],
+                vertical_space().height(20),
+                button(text("CONNECT TO X-PLANE").size(14))
+                    .on_press(Message::ConnectSim)
+                    .padding(10)
+                    .style(if is_sim_connected {
+                        iced::theme::Button::Secondary
+                    } else {
+                        iced::theme::Button::Primary
+                    }),
+                vertical_space().height(40),
+                text("NETWORK SPECS")
+                    .size(14)
+                    .style(Color::from_rgb(0.4, 0.4, 0.4)),
+                text("Local IP: 127.0.0.1")
+                    .size(12)
+                    .style(Color::from_rgb(0.4, 0.4, 0.4)),
+                text("UDP Port: 49000")
+                    .size(12)
+                    .style(Color::from_rgb(0.4, 0.4, 0.4)),
+            ]
+            .padding(20),
+        )
+        .width(Length::FillPortion(1))
+        .height(Length::Fill)
+        .style(card_style);
+
+        let main_content = container(
+            row![hardware_card, horizontal_space().width(20), sim_card]
+                .padding(20)
+                .spacing(20),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        let footer = if let Some(err) = &self.error_msg {
+            container(text(err).size(14).style(Color::from_rgb(1.0, 0.3, 0.3)))
                 .padding(10)
+                .width(Length::Fill)
+                .style(footer_style)
+        } else {
+            container(vertical_space().height(0)).padding(0)
         };
 
-        let mut devices_list = column![text("Connected Devices:").size(24)].spacing(10);
-        if self.devices.is_empty() {
-            devices_list = devices_list.push(text("No devices found."));
-        } else {
-            for dev in &self.devices {
-                devices_list = devices_list
-                    .push(row![text("• "), text(dev).size(18),].align_items(Alignment::Center));
-            }
-        }
+        column![header, main_content, footer].into()
+    }
+}
 
-        let mut content = column![
-            title,
-            subtitle,
-            vertical_space().height(20.0),
-            scan_btn,
-            vertical_space().height(20.0),
-            devices_list,
-            vertical_space().height(40.0),
-            text(format!("Simulator: {}", self.sim_status)).size(24),
-            button("Connect to X-Plane")
-                .on_press(Message::ConnectSim)
-                .padding(10),
-        ]
-        .spacing(10)
-        .padding(20)
-        .align_items(Alignment::Center);
+fn header_style(_theme: &Theme) -> container::Appearance {
+    container::Appearance {
+        background: Some(iced::Background::Color(Color::from_rgb(0.05, 0.05, 0.07))),
+        border: iced::Border {
+            color: Color::from_rgb(0.1, 0.1, 0.15),
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        ..Default::default()
+    }
+}
 
-        if let Some(err) = &self.error_msg {
-            content = content.push(
-                text(err)
-                    .style(iced::Color::from_rgb(1.0, 0.0, 0.0))
-                    .size(16),
-            );
-        }
+fn footer_style(_theme: &Theme) -> container::Appearance {
+    container::Appearance {
+        background: Some(iced::Background::Color(Color::from_rgb(0.2, 0.05, 0.05))),
+        ..Default::default()
+    }
+}
 
-        container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x()
-            .center_y()
-            .into()
+fn card_style(_theme: &Theme) -> container::Appearance {
+    container::Appearance {
+        background: Some(iced::Background::Color(Color::from_rgb(0.08, 0.08, 0.1))),
+        border: iced::Border {
+            color: Color::from_rgb(0.15, 0.15, 0.2),
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..Default::default()
     }
 }
