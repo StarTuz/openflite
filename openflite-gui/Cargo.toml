@@ -12,3 +12,4 @@ env_logger = "0.10"
 openflite-core = { path = "../openflite-core" }
 openflite-connect = { path = "../openflite-connect" }
 futures = "0.3"
+rfd = "0.14"

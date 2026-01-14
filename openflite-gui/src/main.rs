@@ -8,6 +8,7 @@ use iced::{
 };
 use openflite_core::{Core, Event};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -112,6 +113,11 @@ enum Message {
     EditorOnLeftCmdChanged(String),
     EditorOnRightCmdChanged(String),
     AddInputMapping,
+    // File Persistence
+    SaveConfig,
+    LoadConfigFile,
+    ConfigFileLoaded(Result<(PathBuf, String), String>),
+    ConfigFileSaved(Result<PathBuf, String>),
 }
 
 impl Application for OpenFliteApp {
@@ -398,6 +404,74 @@ impl Application for OpenFliteApp {
                     self.editor.on_right_cmd = String::new();
                 }
             }
+            // File Persistence Handlers
+            Message::SaveConfig => {
+                let xml = self.generate_config_xml();
+                return Command::perform(
+                    async move {
+                        let file = rfd::AsyncFileDialog::new()
+                            .add_filter("MobiFlight Config", &["mcc", "xml"])
+                            .set_file_name("openflite_config.mcc")
+                            .save_file()
+                            .await;
+                        if let Some(file) = file {
+                            let path = file.path().to_path_buf();
+                            match std::fs::write(&path, xml) {
+                                Ok(_) => Ok(path),
+                                Err(e) => Err(e.to_string()),
+                            }
+                        } else {
+                            Err("Cancelled".to_string())
+                        }
+                    },
+                    Message::ConfigFileSaved,
+                );
+            }
+            Message::LoadConfigFile => {
+                return Command::perform(
+                    async move {
+                        let file = rfd::AsyncFileDialog::new()
+                            .add_filter("MobiFlight Config", &["mcc", "xml"])
+                            .pick_file()
+                            .await;
+                        if let Some(file) = file {
+                            let path = file.path().to_path_buf();
+                            match std::fs::read_to_string(&path) {
+                                Ok(content) => Ok((path, content)),
+                                Err(e) => Err(e.to_string()),
+                            }
+                        } else {
+                            Err("Cancelled".to_string())
+                        }
+                    },
+                    Message::ConfigFileLoaded,
+                );
+            }
+            Message::ConfigFileSaved(result) => match result {
+                Ok(path) => {
+                    self.error_msg = None;
+                    log::info!("Config saved to {:?}", path);
+                }
+                Err(e) if e != "Cancelled" => {
+                    self.error_msg = Some(format!("Save failed: {}", e));
+                }
+                _ => {}
+            },
+            Message::ConfigFileLoaded(result) => match result {
+                Ok((path, content)) => {
+                    if self.core.load_config(&content).is_ok() {
+                        self.config_loaded = true;
+                        self.error_msg = None;
+                        log::info!("Config loaded from {:?}", path);
+                    } else {
+                        self.error_msg = Some("Failed to parse config".to_string());
+                    }
+                }
+                Err(e) if e != "Cancelled" => {
+                    self.error_msg = Some(format!("Load failed: {}", e));
+                }
+                _ => {}
+            },
         }
         Command::none()
     }
@@ -943,6 +1017,18 @@ impl OpenFliteApp {
                 ))
                 .size(12)
                 .style(Color::from_rgb(0.4, 0.4, 0.4)),
+                vertical_space().height(15),
+                row![
+                    button(text("SAVE CONFIG").size(12))
+                        .on_press(Message::SaveConfig)
+                        .padding(8)
+                        .style(iced::theme::Button::Secondary),
+                    horizontal_space().width(10),
+                    button(text("LOAD CONFIG").size(12))
+                        .on_press(Message::LoadConfigFile)
+                        .padding(8)
+                        .style(iced::theme::Button::Secondary),
+                ],
             ]
             .padding(20),
         )
