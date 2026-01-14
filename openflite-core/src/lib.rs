@@ -86,79 +86,89 @@ impl Core {
 
     pub async fn run(&self) -> Result<(), anyhow::Error> {
         loop {
-            // Poll devices for input events
-            let mut hardware_responses = Vec::new();
-            {
-                // Process injected responses first
-                {
-                    let mut injected = self.injected_responses.lock().unwrap();
-                    hardware_responses.append(&mut *injected);
-                }
+            let hardware_responses = self.collect_hardware_events();
+            let hardware_actions = self.process_simulation_sync(hardware_responses);
+            self.apply_hardware_outputs(hardware_actions);
 
-                let mut devices = self.devices.lock().unwrap();
-                for dev in devices.iter_mut() {
-                    let resps = dev.poll_events();
-                    for resp in resps {
-                        hardware_responses.push((dev.name.clone(), resp));
-                    }
-                }
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        }
+    }
+
+    fn collect_hardware_events(&self) -> Vec<(String, Response)> {
+        let mut hardware_responses = Vec::new();
+        // 1. Process injected responses first
+        {
+            let mut injected = self.injected_responses.lock().unwrap();
+            hardware_responses.append(&mut *injected);
+        }
+
+        // 2. Poll physical devices
+        let mut devices = self.devices.lock().unwrap();
+        for dev in devices.iter_mut() {
+            let resps = dev.poll_events();
+            for resp in resps {
+                hardware_responses.push((dev.name.clone(), resp));
             }
+        }
+        hardware_responses
+    }
 
-            // Poll simulator and process mappings
-            let mut hardware_actions = Vec::new();
-            {
-                let mut sim = self.sim_client.lock().unwrap();
-                if let Some(client) = sim.as_mut() {
-                    let _ = client.poll();
+    fn process_simulation_sync(
+        &self,
+        hardware_responses: Vec<(String, Response)>,
+    ) -> Vec<crate::mapping::HardwareAction> {
+        let mut hardware_actions = Vec::new();
+        let mut sim = self.sim_client.lock().unwrap();
 
-                    let mapping = self.mapping_engine.lock().unwrap();
-                    if let Some(engine) = mapping.as_ref() {
-                        // 1. Process Output Mappings (Sim -> Hardware)
-                        let data = client.get_all_variables();
-                        hardware_actions = engine.process_outputs(&data);
+        if let Some(client) = sim.as_mut() {
+            let _ = client.poll();
 
-                        // 2. Process Input Mappings (Hardware -> Sim)
-                        for (dev_name, resp) in hardware_responses {
-                            // Forward event to UI for logging
-                            if let Response::InputEvent {
-                                name: pin_name,
-                                value,
-                            } = &resp
-                            {
-                                self.broadcast(Event::VariableChanged {
-                                    name: format!("{}:{}", dev_name, pin_name),
-                                    value: value.parse().unwrap_or(0.0),
-                                });
+            let mapping = self.mapping_engine.lock().unwrap();
+            if let Some(engine) = mapping.as_ref() {
+                // A. Sim -> Hardware
+                let data = client.get_all_variables();
+                hardware_actions = engine.process_outputs(&data);
+
+                // B. Hardware -> Sim
+                for (dev_name, resp) in hardware_responses {
+                    // Update UI cache for inputs too
+                    if let Response::InputEvent {
+                        name: pin_name,
+                        value,
+                    } = &resp
+                    {
+                        self.broadcast(Event::VariableChanged {
+                            name: format!("{}:{}", dev_name, pin_name),
+                            value: value.parse().unwrap_or(0.0),
+                        });
+                    }
+
+                    let sim_actions = engine.process_inputs(&resp);
+                    for action in sim_actions {
+                        match action {
+                            crate::mapping::SimAction::Command(cmd) => {
+                                let _ = client.execute_command(&cmd);
                             }
-
-                            let sim_actions = engine.process_inputs(&resp);
-                            for action in sim_actions {
-                                match action {
-                                    crate::mapping::SimAction::Command(cmd) => {
-                                        let _ = client.execute_command(&cmd);
-                                    }
-                                    crate::mapping::SimAction::WriteDataref(dref, val) => {
-                                        let _ = client.write_variable(&dref, val);
-                                    }
-                                    _ => {}
-                                }
+                            crate::mapping::SimAction::WriteDataref(dref, val) => {
+                                let _ = client.write_variable(&dref, val);
                             }
+                            _ => {}
                         }
                     }
                 }
             }
+        }
+        hardware_actions
+    }
 
-            // Apply actions to devices
-            if !hardware_actions.is_empty() {
-                let mut devices = self.devices.lock().unwrap();
-                for action in hardware_actions {
-                    if let Some(dev) = devices.iter_mut().find(|d| d.serial == action.serial) {
-                        let _ = dev.set_pin(action.pin, action.value);
-                    }
+    fn apply_hardware_outputs(&self, hardware_actions: Vec<crate::mapping::HardwareAction>) {
+        if !hardware_actions.is_empty() {
+            let mut devices = self.devices.lock().unwrap();
+            for action in hardware_actions {
+                if let Some(dev) = devices.iter_mut().find(|d| d.serial == action.serial) {
+                    let _ = dev.set_pin(action.pin, action.value);
                 }
             }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         }
     }
 

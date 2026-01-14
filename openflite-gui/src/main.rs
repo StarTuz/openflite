@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
+mod styles;
+
 pub fn main() -> iced::Result {
     env_logger::init();
     OpenFliteApp::run(Settings {
@@ -234,10 +236,19 @@ impl Application for OpenFliteApp {
     fn view(&self) -> Element<'_, Message> {
         let is_sim_connected = self.sim_status == "Connected";
         let is_demo_mode = self.sim_status == "Demo Mode";
-        let is_any_connected = is_sim_connected || is_demo_mode;
 
-        // Header
-        let header = container(
+        column![
+            self.view_header(),
+            self.view_main_content(is_sim_connected, is_demo_mode),
+            self.view_footer()
+        ]
+        .into()
+    }
+}
+
+impl OpenFliteApp {
+    fn view_header(&self) -> Element<'_, Message> {
+        container(
             row![
                 text("OPENFLITE")
                     .size(30)
@@ -250,10 +261,47 @@ impl Application for OpenFliteApp {
             .align_items(Alignment::Center)
             .padding(20),
         )
-        .style(header_style);
+        .style(styles::header_style)
+        .into()
+    }
 
-        // Hardware Card
-        let hardware_card = container(
+    fn view_footer(&self) -> Element<'_, Message> {
+        if let Some(err) = &self.error_msg {
+            container(text(err).size(14).style(Color::from_rgb(1.0, 0.3, 0.3)))
+                .padding(10)
+                .width(Length::Fill)
+                .style(styles::footer_style)
+                .into()
+        } else {
+            vertical_space().height(0).into()
+        }
+    }
+
+    fn view_main_content(
+        &self,
+        is_sim_connected: bool,
+        is_demo_mode: bool,
+    ) -> Element<'_, Message> {
+        container(
+            column![
+                row![
+                    self.view_hardware_card(),
+                    horizontal_space().width(20),
+                    self.view_sim_card(is_sim_connected, is_demo_mode)
+                ]
+                .height(Length::FillPortion(1)),
+                vertical_space().height(20),
+                self.view_data_card(),
+            ]
+            .padding(20),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    }
+
+    fn view_hardware_card(&self) -> Element<'_, Message> {
+        container(
             column![
                 text("HARDWARE DASHBOARD")
                     .size(18)
@@ -332,10 +380,13 @@ impl Application for OpenFliteApp {
         )
         .width(Length::FillPortion(1))
         .height(Length::Fill)
-        .style(card_style);
+        .style(styles::card_style)
+        .into()
+    }
 
-        // Simulator Card
-        let sim_card = container(
+    fn view_sim_card(&self, is_sim_connected: bool, is_demo_mode: bool) -> Element<'_, Message> {
+        let is_any_connected = is_sim_connected || is_demo_mode;
+        container(
             column![
                 text("SIMULATION BRIDGE")
                     .size(18)
@@ -398,10 +449,12 @@ impl Application for OpenFliteApp {
         )
         .width(Length::FillPortion(1))
         .height(Length::Fill)
-        .style(card_style);
+        .style(styles::card_style)
+        .into()
+    }
 
-        // Live Data Card
-        let data_card = container(
+    fn view_data_card(&self) -> Element<'_, Message> {
+        container(
             column![
                 text("LIVE DATA MONITOR")
                     .size(18)
@@ -432,61 +485,8 @@ impl Application for OpenFliteApp {
             .padding(20),
         )
         .width(Length::Fill)
-        .height(Length::Fill)
-        .style(card_style);
-
-        let main_content = container(
-            column![
-                row![hardware_card, horizontal_space().width(20), sim_card]
-                    .height(Length::FillPortion(1)),
-                vertical_space().height(20),
-                data_card.height(Length::FillPortion(1)),
-            ]
-            .padding(20),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill);
-
-        let footer = if let Some(err) = &self.error_msg {
-            container(text(err).size(14).style(Color::from_rgb(1.0, 0.3, 0.3)))
-                .padding(10)
-                .width(Length::Fill)
-                .style(footer_style)
-        } else {
-            container(vertical_space().height(0)).padding(0)
-        };
-
-        column![header, main_content, footer].into()
-    }
-}
-
-fn header_style(_theme: &Theme) -> container::Appearance {
-    container::Appearance {
-        background: Some(iced::Background::Color(Color::from_rgb(0.05, 0.05, 0.07))),
-        border: iced::Border {
-            color: Color::from_rgb(0.1, 0.1, 0.15),
-            width: 0.0,
-            radius: 0.0.into(),
-        },
-        ..Default::default()
-    }
-}
-
-fn footer_style(_theme: &Theme) -> container::Appearance {
-    container::Appearance {
-        background: Some(iced::Background::Color(Color::from_rgb(0.2, 0.05, 0.05))),
-        ..Default::default()
-    }
-}
-
-fn card_style(_theme: &Theme) -> container::Appearance {
-    container::Appearance {
-        background: Some(iced::Background::Color(Color::from_rgb(0.08, 0.08, 0.1))),
-        border: iced::Border {
-            color: Color::from_rgb(0.15, 0.15, 0.2),
-            width: 1.0,
-            radius: 8.0.into(),
-        },
-        ..Default::default()
+        .height(Length::FillPortion(1))
+        .style(styles::card_style)
+        .into()
     }
 }
