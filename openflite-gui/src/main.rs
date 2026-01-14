@@ -39,6 +39,10 @@ struct OpenFliteApp {
     editor: EditorState,
     output_mappings: Vec<OutputMappingDraft>,
     input_mappings: Vec<InputMappingDraft>,
+    // Flash State
+    flash_progress: u8,
+    flash_status: Option<String>,
+    selected_board: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -118,6 +122,10 @@ enum Message {
     LoadConfigFile,
     ConfigFileLoaded(Result<(PathBuf, String), String>),
     ConfigFileSaved(Result<PathBuf, String>),
+    // Flash Messages
+    SelectBoard(String),
+    FlashFirmware,
+    FlashComplete(Result<(), String>),
 }
 
 impl Application for OpenFliteApp {
@@ -149,6 +157,9 @@ impl Application for OpenFliteApp {
                 editor: EditorState::default(),
                 output_mappings: Vec::new(),
                 input_mappings: Vec::new(),
+                flash_progress: 0,
+                flash_status: None,
+                selected_board: None,
             },
             Command::none(),
         )
@@ -472,6 +483,54 @@ impl Application for OpenFliteApp {
                 }
                 _ => {}
             },
+            // Flash Handlers
+            Message::SelectBoard(board) => {
+                self.selected_board = Some(board);
+            }
+            Message::FlashFirmware => {
+                if let (Some(board_name), Some(port)) = (&self.selected_board, self.devices.first())
+                {
+                    let port = port.clone();
+                    let board = match board_name.as_str() {
+                        "Arduino Mega" => openflite_core::flash::BoardType::ArduinoMega,
+                        "Arduino Pro Micro" => openflite_core::flash::BoardType::ArduinoProMicro,
+                        _ => openflite_core::flash::BoardType::ArduinoNano,
+                    };
+                    self.flash_status = Some("Flashing...".to_string());
+                    self.flash_progress = 0;
+
+                    // For now, just show a placeholder message since we don't have firmware files
+                    return Command::perform(
+                        async move {
+                            // Check if avrdude is available
+                            if !openflite_core::flash::check_avrdude() {
+                                return Err(
+                                    "avrdude not found. Please install avrdude.".to_string()
+                                );
+                            }
+                            // Real flashing would happen here
+                            // For demo, just simulate
+                            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                            log::info!("Would flash {:?} to {}", board, port);
+                            Ok(())
+                        },
+                        Message::FlashComplete,
+                    );
+                } else {
+                    self.error_msg =
+                        Some("Select a board and ensure device is connected".to_string());
+                }
+            }
+            Message::FlashComplete(result) => match result {
+                Ok(_) => {
+                    self.flash_status = Some("Flash complete!".to_string());
+                    self.flash_progress = 100;
+                }
+                Err(e) => {
+                    self.flash_status = Some(format!("Flash failed: {}", e));
+                    self.error_msg = Some(e);
+                }
+            },
         }
         Command::none()
     }
@@ -673,6 +732,34 @@ impl OpenFliteApp {
                     .spacing(5)
                 )
                 .height(Length::Fill),
+                vertical_space().height(15),
+                text("FLASH FIRMWARE")
+                    .size(14)
+                    .style(Color::from_rgb(0.5, 0.5, 0.5)),
+                vertical_space().height(5),
+                row![
+                    pick_list(
+                        vec![
+                            "Arduino Mega".to_string(),
+                            "Arduino Pro Micro".to_string(),
+                            "Arduino Nano".to_string()
+                        ],
+                        self.selected_board.clone(),
+                        Message::SelectBoard
+                    )
+                    .placeholder("Select Board"),
+                    horizontal_space().width(10),
+                    button(text("FLASH").size(12))
+                        .on_press(Message::FlashFirmware)
+                        .padding(8)
+                        .style(iced::theme::Button::Destructive),
+                ]
+                .align_items(Alignment::Center),
+                if let Some(status) = &self.flash_status {
+                    Element::from(text(status).size(12).style(Color::from_rgb(0.6, 0.6, 0.6)))
+                } else {
+                    vertical_space().height(0).into()
+                },
             ]
             .padding(20),
         )

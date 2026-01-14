@@ -1,5 +1,6 @@
 pub mod config;
 pub mod device;
+pub mod flash;
 pub mod mapping;
 pub mod protocol;
 
